@@ -1,56 +1,86 @@
 // src/components/Dashboard.tsx
 import React, { useEffect, useState } from "react";
-import { connectApi } from "../api";
 import {
   web3Enable,
   web3Accounts,
   web3FromAddress,
 } from "@polkadot/extension-dapp";
+import { connectApi } from "../api";
 import { Codec } from "@polkadot/types/types";
 
 const Dashboard: React.FC = () => {
-  const [storedValue, setStoredValue] = useState<String | null>(null);
-  const [input, setInput] = useState("");
   const [account, setAccount] = useState<any>(null);
-  async function cconnectApi() {
-    const api = await connectApi();
-    console.log("Available tx modules:", Object.keys(api.tx));
-    console.log("Available query modules:", Object.keys(api.query));
-  }
-  cconnectApi();
+  const [username, setUsername] = useState("");
+  const [bio, setBio] = useState("");
+  const [storedProfile, setStoredProfile] = useState<{
+    username: string;
+    bio: string;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [txStatus, setTxStatus] = useState("");
 
-  // Get stored value
-  const fetchStorage = async () => {
-    const api = await connectApi();
-    const value = await api.query.template.something();
-    setStoredValue((value as Codec).toString());
-  };
-
-  // Load Polkadot.js extension
+  // Load extension & account
   const loadAccount = async () => {
-    await web3Enable("my-polkadot-frontend");
+    await web3Enable("my-polkadot-app");
     const accounts = await web3Accounts();
-    setAccount(accounts[0]);
+    if (accounts.length > 0) {
+      setAccount(accounts[0]);
+    }
   };
 
-  // Set value
-  const handleSubmit = async () => {
-    if (!account) return;
+  // Fetch profile from chain
+const fetchProfile = async () => {
+  setLoading(true);
+  const api = await connectApi();
+  const result = await api.query.template.userProfiles(account.address);
 
+  if (!result.isEmpty) {
+    const [storedUsername, storedBio] = result.toHuman() as [string, string];
+    setStoredProfile({ username: storedUsername, bio: storedBio });
+  } else {
+    setStoredProfile(null);
+  }
+
+  setLoading(false);
+};
+
+
+  // Set profile
+  const handleSetProfile = async () => {
+    if (!username || !bio || !account) return;
     const api = await connectApi();
     const injector = await web3FromAddress(account.address);
-    const tx = api.tx.template.doSomething(Number(input));
+    const tx = api.tx.template.setProfile(username, bio);
 
+    setTxStatus("Submitting...");
     await tx.signAndSend(
       account.address,
       { signer: injector.signer },
       ({ status }) => {
-        if (status.isInBlock) {
-          alert("Transaction in block!");
-        }
+        if (status.isInBlock) setTxStatus("Transaction included in block.");
         if (status.isFinalized) {
-          alert("Transaction finalized!");
-          fetchStorage();
+          setTxStatus("Profile successfully updated.");
+          fetchProfile();
+        }
+      }
+    );
+  };
+
+  // Remove profile
+  const handleRemoveProfile = async () => {
+    const api = await connectApi();
+    const injector = await web3FromAddress(account.address);
+    const tx = api.tx.template.removeUserInfo();
+
+    setTxStatus("Submitting...");
+    await tx.signAndSend(
+      account.address,
+      { signer: injector.signer },
+      ({ status }) => {
+        if (status.isInBlock) setTxStatus("Removing profile...");
+        if (status.isFinalized) {
+          setTxStatus("Profile removed.");
+          setStoredProfile(null);
         }
       }
     );
@@ -58,25 +88,65 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     loadAccount();
-    fetchStorage();
   }, []);
 
+  useEffect(() => {
+    if (account) fetchProfile();
+  }, [account]);
+
   return (
-    <div style={{ padding: 20 }}>
-      <h2>🚀 Pallet Template Frontend</h2>
+    <div
+      style={{
+        maxWidth: 600,
+        margin: "40px auto",
+        padding: 20,
+        border: "1px solid #ddd",
+        borderRadius: 10,
+      }}
+    >
+      <h2>🌐 Decentralized Profile Manager</h2>
       <p>
-        <strong>Connected Account:</strong> {account?.address || "Loading..."}
+        <strong>Connected:</strong> {account?.address || "Loading..."}
       </p>
 
-      <h4>Stored Value in Chain: {storedValue ?? "Loading..."}</h4>
+      {loading ? (
+        <p>Loading profile from blockchain...</p>
+      ) : storedProfile ? (
+        <div
+          style={{ backgroundColor: "#f0f0f0", padding: 10, borderRadius: 6 }}
+        >
+          <p>
+            <strong>Username:</strong> {storedProfile.username}
+          </p>
+          <p>
+            <strong>Bio:</strong> {storedProfile.bio}
+          </p>
+          <button onClick={handleRemoveProfile}>❌ Remove Profile</button>
+        </div>
+      ) : (
+        <p>No profile found on-chain.</p>
+      )}
 
+      <hr />
+
+      <h4>👤 Update Your Profile</h4>
       <input
-        type="number"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="Enter number"
+        type="text"
+        placeholder="Username"
+        value={username}
+        onChange={(e) => setUsername(e.target.value)}
+        style={{ width: "100%", marginBottom: 10 }}
       />
-      <button onClick={handleSubmit}>Set Value</button>
+      <textarea
+        placeholder="Bio"
+        value={bio}
+        onChange={(e) => setBio(e.target.value)}
+        rows={3}
+        style={{ width: "100%", marginBottom: 10 }}
+      />
+      <button onClick={handleSetProfile}>💾 Save Profile</button>
+
+      <p style={{ marginTop: 10, color: "green" }}>{txStatus}</p>
     </div>
   );
 };
