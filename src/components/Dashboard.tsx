@@ -50,6 +50,7 @@ const fetchProfile = async () => {
     if (!username || !bio || !account) return;
     const api = await connectApi();
     const injector = await web3FromAddress(account.address);
+    console.log(api.tx.template);
     const tx = api.tx.template.setProfile(username, bio);
 
     setTxStatus("Submitting...");
