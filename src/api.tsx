@@ -1,4 +1,3 @@
-// src/api.ts
 import { ApiPromise, WsProvider } from "@polkadot/api";
 
 export async function connectApi() {
